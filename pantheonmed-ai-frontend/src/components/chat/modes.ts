@@ -1,0 +1,128 @@
+import {
+  Activity,
+  BookOpen,
+  FlaskConical,
+  MapPin,
+  Pill,
+  Radio,
+  ScanLine,
+  TrendingUp,
+} from "lucide-react";
+import type { ChatMode } from "./types";
+
+export const CHAT_MODES: Record<string, ChatMode> = {
+  symptom: {
+    id: "symptom",
+    label: "Symptom Mode",
+    description: "Clinical symptom analysis & triage",
+    icon: Activity,
+    color: "bg-blue-600",
+    textColor: "text-blue-600",
+    borderColor: "border-blue-200",
+    promptPrefix:
+      "You are a senior clinical physician performing an OPD consultation. Analyze the following patient symptoms with clinical reasoning, provide a differential diagnosis ranked by likelihood, red flag warnings, and recommended investigations. ",
+    placeholder: "Describe your symptoms, e.g. chest pain and dizziness for 2 days...",
+    acceptsFile: false,
+    acceptsImage: false,
+  },
+  report: {
+    id: "report",
+    label: "Report Mode",
+    description: "Lab report & blood test analysis",
+    icon: FlaskConical,
+    color: "bg-violet-600",
+    textColor: "text-violet-600",
+    borderColor: "border-violet-200",
+    promptPrefix:
+      "You are a senior clinical pathologist. Analyze the following laboratory report or blood test results. Identify abnormal values, explain their clinical significance, calculate risk levels, and recommend next medical steps. ",
+    placeholder: "Paste lab results, e.g. HbA1c: 8.2, Cholesterol: 240, Creatinine: 1.8...",
+    acceptsFile: true,
+    acceptsImage: true,
+  },
+  radiology: {
+    id: "radiology",
+    label: "Radiology Mode",
+    description: "X-ray, MRI & CT report interpretation",
+    icon: Radio,
+    color: "bg-cyan-600",
+    textColor: "text-cyan-600",
+    borderColor: "border-cyan-200",
+    promptPrefix:
+      "You are a consultant radiologist. Analyze the following radiology report or imaging findings. Interpret the findings in clinical context, identify significant abnormalities, and recommend appropriate clinical management. ",
+    placeholder: "Paste radiology report or describe imaging findings...",
+    acceptsFile: true,
+    acceptsImage: true,
+  },
+  drug: {
+    id: "drug",
+    label: "Drug Mode",
+    description: "Drug info, dosing & interactions",
+    icon: Pill,
+    color: "bg-emerald-600",
+    textColor: "text-emerald-600",
+    borderColor: "border-emerald-200",
+    promptPrefix:
+      "You are a senior clinical pharmacist. Provide comprehensive information about the following medication(s) including indications, contraindications, dosing, drug interactions, and monitoring parameters. ",
+    placeholder: "Ask about a drug, e.g. interaction between metformin and lisinopril...",
+    acceptsFile: false,
+    acceptsImage: false,
+  },
+  research: {
+    id: "research",
+    label: "Research Mode",
+    description: "Latest clinical evidence & guidelines",
+    icon: BookOpen,
+    color: "bg-amber-600",
+    textColor: "text-amber-600",
+    borderColor: "border-amber-200",
+    promptPrefix:
+      "You are a clinical evidence specialist with access to WHO, CDC, NIH, and PubMed guidelines. Provide evidence-based medical information with references to clinical guidelines and research. ",
+    placeholder: "Ask about treatment guidelines, e.g. latest hypertension management...",
+    acceptsFile: false,
+    acceptsImage: false,
+  },
+  risk: {
+    id: "risk",
+    label: "Risk Prediction",
+    description: "Health risk assessment & prevention",
+    icon: TrendingUp,
+    color: "bg-red-600",
+    textColor: "text-red-600",
+    borderColor: "border-red-200",
+    promptPrefix:
+      "You are a preventive medicine specialist. Assess the following patient's health risk profile. Calculate risk scores where applicable, identify modifiable risk factors, and provide a structured prevention plan. ",
+    placeholder: "Enter health data, e.g. age 52, BMI 28, BP 145/90, HbA1c 6.8, smoker...",
+    acceptsFile: false,
+    acceptsImage: false,
+  },
+  scan: {
+    id: "scan",
+    label: "Scan Mode",
+    description: "Medical image & prescription analysis",
+    icon: ScanLine,
+    color: "bg-indigo-600",
+    textColor: "text-indigo-600",
+    borderColor: "border-indigo-200",
+    promptPrefix:
+      "You are a clinical AI specialist. Analyze the attached medical document, prescription, or medical image. Extract key medical information, identify any concerns, and provide a clinical interpretation. ",
+    placeholder: "Upload or capture a medical document, prescription, or test result...",
+    acceptsFile: true,
+    acceptsImage: true,
+  },
+  care_finder: {
+    id: "care_finder",
+    label: "Care Finder",
+    description: "Care pathways & specialist referrals",
+    icon: MapPin,
+    color: "bg-teal-600",
+    textColor: "text-teal-600",
+    borderColor: "border-teal-200",
+    promptPrefix:
+      "You are a medical care coordinator. Based on the following patient presentation, recommend the appropriate care pathway, type of specialist to consult, urgency of referral, and what to expect during the consultation. ",
+    placeholder: "Describe your situation, e.g. diagnosed with Type 2 diabetes, need specialist guidance...",
+    acceptsFile: false,
+    acceptsImage: false,
+  },
+};
+
+export const DEFAULT_MODE = CHAT_MODES.symptom;
