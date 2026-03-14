@@ -319,6 +319,8 @@ export default function MedicalChatInterface() {
   const [pendingAttachments, setPendingAttachments] = useState<Attachment[]>([]);
   const [showCamera, setShowCamera] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
+  // null = checking, true = reachable, false = unreachable
+  const [backendStatus, setBackendStatus] = useState<"checking" | "online" | "offline">("checking");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Session ID for conversation memory (backend remembers prior messages)
@@ -338,6 +340,30 @@ export default function MedicalChatInterface() {
     window.addEventListener("online", on);
     window.addEventListener("offline", off);
     return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
+  }, []);
+
+  // ── Backend health probe — checks on mount, retries every 30s if offline ──
+  useEffect(() => {
+    const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").replace(/\/$/, "");
+
+    const probe = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/health`, { method: "GET", signal: AbortSignal.timeout(5000) });
+        setBackendStatus(res.ok ? "online" : "offline");
+      } catch {
+        setBackendStatus("offline");
+      }
+    };
+
+    probe(); // check immediately on mount
+
+    // Retry every 30 seconds while offline, stop when online
+    const interval = setInterval(async () => {
+      if (backendStatus !== "online") await probe();
+    }, 30_000);
+
+    return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Message helpers ─────────────────────────────────────────────────────
@@ -664,12 +690,17 @@ export default function MedicalChatInterface() {
           <p className="text-xs text-gray-500 mt-0.5">Clinical Decision Support System</p>
         </div>
         <div className="flex items-center gap-2">
+          {/* Backend connectivity indicator */}
           <span className={clsx(
             "flex items-center gap-1 text-[10px] font-semibold rounded-full px-2.5 py-1",
-            isOnline ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700",
+            backendStatus === "online"
+              ? "bg-emerald-100 text-emerald-700"
+              : backendStatus === "offline"
+              ? "bg-red-100 text-red-700"
+              : "bg-gray-100 text-gray-500",
           )}>
-            {isOnline ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
-            {isOnline ? "Online" : "Offline"}
+            {backendStatus === "online" ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
+            {backendStatus === "online" ? "Connected" : backendStatus === "offline" ? "Backend offline" : "Connecting…"}
           </span>
           <span className={clsx(
             "text-[10px] font-semibold rounded-full px-2.5 py-1 hidden sm:flex items-center gap-1 bg-gray-100",
@@ -687,6 +718,18 @@ export default function MedicalChatInterface() {
           )}
         </div>
       </div>
+
+      {/* ── Backend offline banner ───────────────────────────────────────── */}
+      {backendStatus === "offline" && (
+        <div className="shrink-0 bg-red-50 border-b border-red-200 px-5 py-2.5 flex items-center gap-2">
+          <WifiOff className="h-4 w-4 text-red-500 shrink-0" />
+          <p className="text-xs font-medium text-red-700 flex-1">
+            Cannot reach the AI server at{" "}
+            <span className="font-mono">{process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}</span>.
+            {" "}Start the backend with <span className="font-mono">./start.sh</span> and refresh.
+          </p>
+        </div>
+      )}
 
       {/* ── Interview progress banner ─────────────────────────────────────── */}
       {interviewActive && interviewRef.current && (
@@ -738,7 +781,7 @@ export default function MedicalChatInterface() {
           }}
           onSend={handleSend}
           onCameraOpen={() => setShowCamera(true)}
-          disabled={isLoading || !isOnline}
+          disabled={isLoading || !isOnline || backendStatus === "offline"}
           pendingAttachments={pendingAttachments}
           onAddAttachment={(att) => setPendingAttachments((p) => [...p, att])}
           onRemoveAttachment={(id) => setPendingAttachments((p) => p.filter((a) => a.id !== id))}
