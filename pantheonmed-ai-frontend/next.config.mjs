@@ -5,7 +5,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Enable standalone output for Docker deployment
+  // Standalone output only for Docker/Railway (not for Vercel)
   output: process.env.DOCKER_BUILD ? "standalone" : undefined,
 
   // Explicit webpack alias for @/* — ensures path resolution in production/Docker

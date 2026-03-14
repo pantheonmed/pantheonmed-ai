@@ -1,0 +1,27 @@
+# .railwayignore — exclude heavy / generated directories from the build upload
+# Syntax mirrors .dockerignore
+
+# Dependencies (reinstalled inside the build container)
+node_modules
+pantheonmed-ai-frontend/node_modules
+
+# Next.js build cache (rebuilt fresh in CI)
+.next
+pantheonmed-ai-frontend/.next
+
+# Local environment files (secrets must be set in Railway Variables tab)
+.env
+.env.local
+.env*.local
+pantheonmed-ai-frontend/.env
+pantheonmed-ai-frontend/.env.local
+pantheonmed-ai-frontend/.env*.local
+
+# TypeScript incremental build info
+*.tsbuildinfo
+pantheonmed-ai-frontend/tsconfig.tsbuildinfo
+
+# Misc
+.git
+.DS_Store
+*.log
