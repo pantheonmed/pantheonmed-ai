@@ -1,7 +1,18 @@
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Enable standalone output for Docker deployment
   output: process.env.DOCKER_BUILD ? "standalone" : undefined,
+
+  // Explicit webpack alias for @/* — ensures path resolution in production/Docker
+  webpack: (config) => {
+    config.resolve.alias["@"] = path.resolve(__dirname, "src");
+    return config;
+  },
 
   experimental: {
     optimizePackageImports: ["lucide-react"],
