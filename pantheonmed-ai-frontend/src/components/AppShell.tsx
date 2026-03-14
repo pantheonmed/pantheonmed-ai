@@ -1,4 +1,6 @@
 "use client";
+
+import React from "react";
 import { usePathname } from "next/navigation";
 import Sidebar from "./Sidebar";
 
@@ -9,7 +11,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const isAuthPage = AUTH_PATHS.some((p) => pathname.startsWith(p));
 
   if (isAuthPage) {
-    // Login (and any future auth pages) render full-screen with no sidebar
     return <>{children}</>;
   }
 
