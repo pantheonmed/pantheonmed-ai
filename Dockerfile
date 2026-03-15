@@ -1,61 +1,23 @@
-# PantheonMed AI — Frontend Dockerfile (Railway, repo-root build context)
-#
-# Build context = repo root, so all COPY paths are prefixed with
-# pantheonmed-ai-frontend/.
-#
-# Three-stage build:
-#   1. deps    — install all npm dependencies
-#   2. builder — compile Next.js standalone bundle
-#   3. runner  — minimal runtime image (no node_modules needed for standalone)
-
-# ── Stage 1: Install dependencies ────────────────────────────────────────────
-FROM node:20-alpine AS deps
+FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY pantheonmed-ai-frontend/package.json \
-     pantheonmed-ai-frontend/package-lock.json* ./
+# Install system dependencies for OCR and PostgreSQL
+RUN apt-get update && apt-get install -y \
+    tesseract-ocr \
+    tesseract-ocr-hin \
+    libpq-dev \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN npm ci
+COPY backend/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# ── Stage 2: Build ────────────────────────────────────────────────────────────
-FROM node:20-alpine AS builder
+COPY backend/ .
 
-WORKDIR /app
+RUN mkdir -p uploads/lab-reports uploads/health-records uploads/radiology
 
-# Bring in node_modules from deps stage
-COPY --from=deps /app/node_modules ./node_modules
+EXPOSE 8000
 
-# Copy full frontend source
-COPY pantheonmed-ai-frontend/ .
-
-# NEXT_PUBLIC_* vars are baked into the JS bundle at build time
-ARG NEXT_PUBLIC_API_URL=https://api.pantheonmed.ai
-ARG NEXT_PUBLIC_API_TOKEN=
-
-ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
-ENV NEXT_PUBLIC_API_TOKEN=${NEXT_PUBLIC_API_TOKEN}
-ENV NEXT_TELEMETRY_DISABLED=1
-ENV NODE_ENV=production
-
-RUN npm run build
-
-# ── Stage 3: Runtime ──────────────────────────────────────────────────────────
-FROM node:20-alpine AS runner
-
-WORKDIR /app
-
-ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED=1
-
-# Next.js standalone bundles everything — only these three items are needed:
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static     ./.next/static
-COPY --from=builder /app/public           ./public
-
-# Railway injects PORT at runtime; Next.js standalone respects it automatically
-EXPOSE 3000
-ENV PORT=3000
-ENV HOSTNAME=0.0.0.0
-
-CMD ["node", "server.js"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
