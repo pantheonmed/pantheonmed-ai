@@ -1,85 +1,49 @@
-"""Multi-provider AI service (Gemini, OpenAI, Claude)."""
-from typing import Optional
-import httpx
+from app.config import settings
 
-from app.config import get_settings
+DISCLAIMER = "\n\n---\n⚠️ Medical Disclaimer: AI guidance only — not a substitute for professional medical advice. Emergency: call 112.\n---"
 
-settings = get_settings()
+SYSTEM_PROMPT = """You are PantheonMed AI — India healthcare assistant.
+Rules: 1) Informational only, never diagnose 2) Emergency symptoms → say Call 112 NOW 3) Use simple Hindi/English 4) Always recommend consulting a doctor"""
 
-# Medical disclaimer appended to AI responses
-DISCLAIMER = (
-    "This information is for educational purposes only and does not constitute "
-    "medical advice. Always consult a qualified healthcare provider for diagnosis and treatment."
-)
-
-
-async def get_ai_response(user_message: str, session_id: Optional[str] = None) -> str:
-    """Generate AI response using configured provider."""
+async def ai_complete(messages: list[dict], extra_context: str = "") -> str:
     provider = settings.AI_PROVIDER.lower()
-
-    if provider == "gemini" and settings.GEMINI_API_KEY:
-        return await _gemini_generate(user_message)
-    if provider == "openai" and settings.OPENAI_API_KEY:
-        return await _openai_generate(user_message)
-    if provider == "anthropic" and settings.ANTHROPIC_API_KEY:
-        return await _anthropic_generate(user_message)
-
-    # Fallback: try any available provider
-    if settings.GEMINI_API_KEY:
-        return await _gemini_generate(user_message)
-    if settings.OPENAI_API_KEY:
-        return await _openai_generate(user_message)
-    if settings.ANTHROPIC_API_KEY:
-        return await _anthropic_generate(user_message)
-
-    return (
-        "AI service is not configured. Please set GEMINI_API_KEY, OPENAI_API_KEY, "
-        "or ANTHROPIC_API_KEY in your environment."
-    )
-
-
-async def _gemini_generate(prompt: str) -> str:
     try:
-        import google.generativeai as genai
-        genai.configure(api_key=settings.GEMINI_API_KEY)
-        model = genai.GenerativeModel("gemini-1.5-flash")
-        response = model.generate_content(
-            f"You are a helpful medical assistant. Provide clear, concise responses. "
-            f"Always include appropriate medical disclaimers.\n\nUser: {prompt}"
-        )
-        text = response.text or ""
-        return f"{text}\n\n{DISCLAIMER}" if text else DISCLAIMER
+        if provider == "gemini" and settings.GEMINI_API_KEY:
+            return await _gemini_complete(messages) + DISCLAIMER
+        elif provider == "openai" and settings.OPENAI_API_KEY:
+            return await _plete(messages) + DISCLAIMER
+        elif provider == "claude" and settings.ANTHROPIC_API_KEY:
+            return await _claude_complete(messages) + DISCLAIMER
+        else:
+            return await _gemini_complete(messages) + DISCLAIMER
     except Exception as e:
-        return f"AI error: {str(e)}"
+        return f"AI service temporarily unavailable. Error: {str(e)[:100]}{DISCLAIMER}"
 
+async def _gemini_complete(messages: list[dict]) -> str:
+    import google.generativeai as genai
+    import asyncio
+    genai.configure(api_key=settings.GEMINI_API_KEY)
+    model = genai.GenerativeModel(settings.GEMINI_MODEL, system_instruction=SYSTEM_PROMPT)
+    history = [{"role": "user" if m["role"] == "user" else "model", "parts": [m["content"]]} for m in messages[:-1]]
+    chat = model.start_chat(history=history)
+    response = await asyncio.get_event_loop().run_in_executor(None, lambda: chat.send_message(messages[-1]["content"]))
+    return response.text
 
-async def _openai_generate(prompt: str) -> str:
-    try:
-        from openai import AsyncOpenAI
-        client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "You are a helpful medical assistant. Provide clear, concise responses. Include appropriate medical disclaimers."},
-                {"role": "user", "content": prompt},
-            ],
-        )
-        text = response.choices[0].message.content or ""
-        return f"{text}\n\n{DISCLAIMER}" if text else DISCLAIMER
-    except Exception as e:
-        return f"AI error: {str(e)}"
+async def _openai_complete(messages: list[dict]) -> str:
+    from openai import AsyncOpenAI
+    client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+    response = await client.chat.completions.create(
+        model=settings.OPENAI_MODEL, max_tokens=settings.AI_MAX_TOKENS,
+        messages=[{"role": "system", "content": SYSTEM_PROMPT}] + messages)
+    return response.choices[0].message.content
 
+async def _claude_complete(messages: list[dict]) -> str:
+    import anthropic
+    client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+    response = await client.messages.create(
+        model=settings.CLAUDE_MODEL, max_tokens=settings.AI_MAX_TOKENS,
+        system=SYSTEM_PROMPT, messages=messages)
+    return response.content[0].text
 
-async def _anthropic_generate(prompt: str) -> str:
-    try:
-        from anthropic import AsyncAnthropic
-        client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
-        response = await client.messages.create(
-            model="claude-3-haiku-20240307",
-            max_tokens=1024,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        text = response.content[0].text if response.content else ""
-        return f"{text}\n\n{DISCLAIMER}" if text else DISCLAIMER
-    except Exception as e:
-        return f"AI error: {str(e)}"
+def user_msg(content: str) -> dict:
+    return {"role": "user", "content": content}

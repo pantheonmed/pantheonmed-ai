@@ -1,43 +1,40 @@
-"""PantheonMed AI — Application configuration."""
-import os
 from pydantic_settings import BaseSettings
 from functools import lru_cache
-
+from typing import List
 
 class Settings(BaseSettings):
-    """Application settings from environment variables."""
-
-    # Database
-    DATABASE_URL: str = os.getenv(
-        "DATABASE_URL",
-        "postgresql+asyncpg://postgres:postgres@localhost:5432/pantheonmed",
-    )
-
-    # JWT
-    JWT_SECRET: str = os.getenv("JWT_SECRET", "change-me-in-production")
+    APP_NAME: str = "PantheonMed AI"
+    APP_VERSION: str = "1.0.0"
+    ENV: str = "development"
+    DEBUG: bool = True
+    JWT_SECRET: str = "CHANGE-ME-64-CHAR-SECRET"
     JWT_ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
-
-    # AI providers
-    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
-    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
-    ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
-    AI_PROVIDER: str = os.getenv("AI_PROVIDER", "gemini")  # gemini | openai | anthropic
-
-    # CORS
-    ALLOWED_ORIGINS: str = os.getenv("ALLOWED_ORIGINS", "*")
-
-    # Uploads
-    UPLOAD_DIR: str = os.getenv("UPLOAD_DIR", "uploads")
-
-    # Redis
-    REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    JWT_ACCESS_EXPIRE_MINUTES: int = 30
+    JWT_REFRESH_EXPIRE_DAYS: int = 7
+    DATABASE_URL: str = "postgresql+asyncpg://user:pass@localhost:5432/db"
+    REDIS_URL: str = "redis://localhost:6379/0"
+    AI_PROVIDER: str = "gemini"
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-1.5-flash"
+    OPENAI_API_KEY: str = ""
+    OPENAI_MODEL: str = "gpt-4o-mini"
+    ANTHROPIC_API_KEY: str = ""
+    CLAUDE_MODEL: str = "claude-haiku-4-5-20251001"
+    AI_MAX_TOKENS: int = 2048
+    AI_TEMPERATURE: float = 0.3
+    AI_MAX_HISTORY_CHARS: int = 40000
+    ALLOWED_ORIGINS: List[str] = ["http://localhost:3000","http://localhost:5173"]
+    UPLOAD_DIR: str = "./uploads"
+    MAX_FILE_SIZE_MB: int = 20
+    RATE_LIMIT_PER_MINUTE: int = 60
+    AI_RATE_LIMIT_PER_MINUTE: int = 20
+    LOGIN_RATE_LIMIT_PER_MINUTE: int = 5
 
     class Config:
         env_file = ".env"
-        extra = "ignore"
 
-
-@lru_cache
-def get_settings() -> Settings:
+@lru_cache()
+def get_settings():
     return Settings()
+
+settings = get_settings()

@@ -1,24 +1,19 @@
-"""Lab report model."""
-from sqlalchemy import Column, String, Text, DateTime, ForeignKey, JSON
-from sqlalchemy.sql import func
 import uuid
-
+from datetime import datetime, timezone
+from sqlalchemy import String, DateTime, Text, ForeignKey, Date
+from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from app.db.database import Base
-
-
-def generate_uuid():
-    return str(uuid.uuid4())
-
 
 class LabReport(Base):
     __tablename__ = "lab_reports"
-
-    id = Column(String(36), primary_key=True, default=generate_uuid)
-    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
-    raw_text = Column(Text, nullable=True)
-    analysis = Column(Text, nullable=True)
-    abnormal_flags = Column(JSON, nullable=True)  # list of strings
-    urgent_flags = Column(JSON, nullable=True)
-    summary = Column(Text, nullable=True)
-    file_path = Column(String(512), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    raw_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    structured_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    ai_analysis: Mapped[str | None] = mapped_column(Text, nullable=True)
+    lab_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    report_date: Mapped[datetime | None] = mapped_column(Date, nullable=True)
+    file_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    file_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

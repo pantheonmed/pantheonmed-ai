@@ -1,44 +1,25 @@
-"""Async SQLAlchemy engine and session for PostgreSQL."""
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
-
-from app.config import get_settings
-
-settings = get_settings()
-
-# Ensure asyncpg URL format
-db_url = settings.DATABASE_URL
-if db_url.startswith("postgresql://"):
-    db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-
-engine = create_async_engine(
-    db_url,
-    echo=False,
-    pool_pre_ping=True,
-    pool_size=5,
-    max_overflow=10,
-)
-
-AsyncSessionLocal = async_sessionmaker(
-    engine,
-    class_=AsyncSession,
-    expire_on_commit=False,
-    autocommit=False,
-    autoflush=False,
-)
-
+from app.config import settings
 
 class Base(DeclarativeBase):
     pass
 
+engine = create_async_engine(settings.DATABASE_URL, echo=settings.DEBUG, pool_pre_ping=True)
+AsyncSessionLocal = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
 
 async def get_db():
-    """Dependency for FastAPI routes."""
     async with AsyncSessionLocal() as session:
         try:
             yield session
+            await session.commit()
         except Exception:
             await session.rollback()
             raise
         finally:
             await session.close()
+
+async def create_tables():
+    from app.models import user, chat, health_record, lab_report
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)

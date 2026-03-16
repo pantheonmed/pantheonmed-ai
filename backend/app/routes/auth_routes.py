@@ -1,54 +1,50 @@
-"""Auth routes: register, login, me."""
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-
+from sqlalchemy import select
 from app.db.database import get_db
 from app.models.user import User
-from app.schemas.auth_schema import LoginRequest, RegisterRequest, AuthResponse, UserProfile
-from app.services.auth_service import (
-    get_user_by_email,
-    hash_password,
-    verify_password,
-    create_access_token,
-    create_refresh_token,
-    get_current_user_required,
-)
+from app.schemas.auth_schema import RegisterRequest, LoginRequest, TokenResponse, RefreshRequest, UserResponse
+from app.schemas.user_schema import UserDetailResponse
+from app.services.auth_service import hash_password, verify_password, create_access_token, create_refresh_token, decode_token, get_current_user
 
-router = APIRouter(prefix="/auth", tags=["auth"])
+router = APIRouter(prefix="/auth", tags=["Auth"])
 
-
-@router.post("/register", response_model=UserProfile)
-async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
-    existing = await get_user_by_email(db, req.email)
-    if existing:
-        raise HTTPException(status_code=400, detail="Email already registered")
-    user = User(
-        email=req.email,
-        password_hash=hash_password(req.password),
-        full_name=req.full_name,
-        role=req.role,
-    )
+@router.post("/register", response_model=UserResponse, status_code=201)
+async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
+    existing = await db.execute(select(User).where(User.email == body.email))
+    if existing.scalar_one_or_none():
+        raise HTTPException(400, "Email already registered")
+    user = User(email=body.email, password_hash=hash_password(body.password), full_name=body.full_name, role=body.role, phone=body.phone)
     db.add(user)
     await db.commit()
     await db.refresh(user)
-    return UserProfile(id=user.id, email=user.email, full_name=user.full_name, role=user.role)
+    return user
 
+@router.post("/login", response_model=TokenResponse)
+async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(User).where(User.email == body.email))
+    user = result.scalar_one_or_none()
+    if not user or not verify_password(body.password, user.password_hash):
+        raise HTTPException(401, "Invalid credentials")
+    if not user.is_active:
+        raise HTTPException(403, "Account disabled")
+    return TokenResponse(access_token=create_access_token(user.id, user.role), refresh_token=create_refresh_token(user.id), role=user.role)
 
-@router.post("/login", response_model=AuthResponse)
-async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
-    user = await get_user_by_email(db, req.email)
-    if not user or not verify_password(req.password, user.password_hash):
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-    access = create_access_token({"sub": user.id, "role": user.role})
-    refresh = create_refresh_token({"sub": user.id})
-    return AuthResponse(
-        access_token=access,
-        refresh_token=refresh,
-        token_type="bearer",
-        role=user.role,
-    )
+@router.post("/refresh", response_model=TokenResponse)
+async def refresh(body: RefreshRequest, db: AsyncSession = Depends(get_db)):
+    payload = decode_token(body.refresh_token)
+    if payload.get("type") != "refresh":
+        raise HTTPException(401, "Invalid token type")
+    result = await db.execute(select(User).where(User.id == payload["sub"]))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(401, "User not found")
+    return TokenResponse(access_token=create_access_token(user.id, user.role), refresh_token=create_refresh_token(user.id), role=user.role)
 
+@router.post("/logout")
+async def logout():
+    return {"message": "Logged out successfully"}
 
-@router.get("/me", response_model=UserProfile)
-async def me(user: User = Depends(get_current_user_required)):
-    return UserProfile(id=user.id, email=user.email, full_name=user.full_name, role=user.role)
+@router.get("/me", response_model=UserDetailResponse)
+async def get_me(current_user: User = Depends(get_current_user)):
+    return current_user

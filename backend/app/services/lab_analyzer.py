@@ -1,56 +1,24 @@
-"""Lab report analysis service."""
-import re
-import uuid
-from typing import Optional
+from app.services.ai_service import ai_complete, user_msg
 
-from app.services.ai_service import get_ai_response
+async def analyze_lab_text(raw_text: str, patient_context: str = "", lab_name: str = "") -> dict:
+    prompt = f"""Analyze this lab report and explain in simple terms for Indian patient.
 
+LAB REPORT:
+{raw_text}
 
-async def analyze_lab_text(
-    raw_text: str,
-    lab_name: Optional[str] = None,
-    patient_context: Optional[str] = None,
-) -> dict:
-    """Analyze lab report text and return structured result."""
-    report_id = str(uuid.uuid4())
+Patient context: {patient_context or "Not provided"}
+Lab: {lab_name or "Not specified"}
 
-    context = ""
-    if lab_name:
-        context += f"Lab: {lab_name}. "
-    if patient_context:
-        context += f"Patient context: {patient_context}. "
-
-    prompt = (
-        f"Analyze this lab report:\n\n{raw_text}\n\n"
-        f"{context}"
-        "Provide: 1) Brief analysis (2-3 sentences). "
-        "2) List abnormal values. 3) List urgent flags. 4) One-line summary."
-    )
-
-    analysis = await get_ai_response(prompt)
-
-    # Extract abnormal/urgent flags from common patterns
-    abnormal_flags = _extract_flags(raw_text, r"(?:high|low|elevated|decreased|abnormal)\s*[:\s]?\s*([\w\s,]+)", re.IGNORECASE)
-    urgent_flags = _extract_flags(raw_text, r"(?:critical|urgent|severe|danger)\w*", re.IGNORECASE)
-
-    if not abnormal_flags:
-        abnormal_flags = ["See analysis for details"]
-    if not urgent_flags:
-        urgent_flags = []
-
-    summary = analysis.split("\n")[0] if analysis else "No summary available"
-
-    return {
-        "report_id": report_id,
-        "analysis": analysis,
-        "abnormal_flags": abnormal_flags[:10],
-        "urgent_flags": urgent_flags[:5],
-        "summary": summary,
-        "patterns": [],
-        "parsed_tests_count": len(re.findall(r"%|mg/dL|g/L|U/L|mmol/L", raw_text)) or 1,
-    }
-
-
-def _extract_flags(text: str, pattern: str, flags: int = 0) -> list[str]:
-    matches = re.findall(pattern, text)
-    return list(set(m.strip() for m in matches if m and len(m.strip()) < 100))[:10]
+Please:
+1. List all tests with Normal/HIGH/LOW status
+2. Explain abnormal values in simple language
+3. Flag any URGENT values needing immediate attention
+4. Give 2-3 sentence summary
+5. Recommend next steps
+"""
+    messages = [user_msg(prompt)]
+    analysis = await ai_complete(messages)
+    abnormal = [line.strip("*- ") for line in analysis.split("\n") if "HIGH" in line or "LOW" in line or "abnormal" in line.lower()]
+    urgent = [line.strip("*- ") for line in analysis.split("\n") if "urgent" in line.lower() or "immediate" in line.lower() or "critical" in line.lower()]
+    summary = analysis.split("\n")[0][:300] if analysis else "Analysis complete."
+    return {"analysis": analysis, "abnormal_flags": abnormal[:10], "urgent_flags": urgent[:5], "summary": summary}

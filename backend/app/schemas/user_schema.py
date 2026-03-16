@@ -1,20 +1,18 @@
-"""User schemas."""
+from pydantic import BaseModel
 from typing import Optional
-from pydantic import BaseModel, EmailStr
+from datetime import datetime
 
-
-class UserCreate(BaseModel):
-    email: EmailStr
-    password: str
+class UserUpdateRequest(BaseModel):
     full_name: Optional[str] = None
-    role: str = "patient"
+    phone: Optional[str] = None
 
-
-class UserResponse(BaseModel):
+class UserDetailResponse(BaseModel):
     id: str
     email: str
-    full_name: Optional[str] = None
+    full_name: str
     role: str
-
-    class Config:
-        from_attributes = True
+    is_active: bool
+    is_verified: bool
+    phone: Optional[str] = None
+    created_at: datetime
+    model_config = {"from_attributes": True}
