@@ -1,0 +1,9 @@
+# PantheonMed AI Backend — Railway config
+# Set Root Directory = "backend" in Railway dashboard
+
+[build]
+dockerfilePath = "Dockerfile"
+
+[deploy]
+startCommand = "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+healthcheckPath = "/health"
