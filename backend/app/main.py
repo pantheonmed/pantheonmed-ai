@@ -1,19 +1,20 @@
-"""
-PantheonMed AI — FastAPI Backend
-"""
-import os
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+import os
 
-app = FastAPI(title="PantheonMed AI API")
+app = FastAPI(title="PantheonMed AI", version="1.0.0")
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/health")
 async def health():
-    """Health check for Railway and load balancers."""
-    return {"status": "healthy"}
-
+    return {"status": "healthy", "version": "1.0.0"}
 
 @app.get("/")
 async def root():
-    """Root endpoint."""
-    return {"message": "PantheonMed AI API", "docs": "/docs"}
+    return {"message": "PantheonMed AI Backend is running!"}
