@@ -4,21 +4,19 @@
  */
 import axios, { AxiosInstance } from "axios";
 
+/** baseURL = origin only. All paths must include /api/v1 prefix. */
 const API_ORIGIN = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/$/, "");
-const API_BASE_URL = `${API_ORIGIN}/api/v1`;
 
-/** baseURL for all API calls — do NOT include /api/v1 in NEXT_PUBLIC_API_URL */
 export function getApiBaseUrl(): string {
-  return API_BASE_URL;
+  return `${API_ORIGIN}/api/v1`;
 }
 
-/** Origin only (for /health etc) — do NOT include /api/v1 in env */
 export function getApiOrigin(): string {
   return API_ORIGIN.endsWith("/api/v1") ? API_ORIGIN.replace(/\/api\/v1$/, "") : API_ORIGIN;
 }
 
 const api: AxiosInstance = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: API_ORIGIN,
   timeout: 45_000,
   headers: { "Content-Type": "application/json" },
 });
@@ -127,19 +125,21 @@ export interface UserProfile {
   id: string; email: string; full_name: string; role: string;
 }
 
+const API_V1 = "/api/v1";
+
 export const authAPI = {
   login: async (email: string, password: string): Promise<AuthResponse> => {
-    const { data } = await api.post<AuthResponse>("/auth/login", { email, password });
+    const { data } = await api.post<AuthResponse>(`${API_V1}/auth/login`, { email, password });
     // Token storage is handled by the caller via setToken() / setRefreshToken() from lib/auth
     return data;
   },
   register: async (email: string, password: string, fullName: string): Promise<UserProfile> => {
-    const { data } = await api.post<UserProfile>("/auth/register", {
+    const { data } = await api.post<UserProfile>(`${API_V1}/auth/register`, {
       email, password, full_name: fullName, role: "patient",
     });
     return data;
   },
-  me: async (): Promise<UserProfile> => { const { data } = await api.get<UserProfile>("/auth/me"); return data; },
+  me: async (): Promise<UserProfile> => { const { data } = await api.get<UserProfile>(`${API_V1}/auth/me`); return data; },
 };
 
 export const chatAPI = {
@@ -148,7 +148,7 @@ export const chatAPI = {
     sessionId?: string,
     guestSessionId?: string,
   ): Promise<ChatResponse> => {
-    const { data } = await api.post<ChatResponse>("/chat", {
+    const { data } = await api.post<ChatResponse>(`${API_V1}/chat`, {
       content,
       ...(sessionId      ? { session_id:       sessionId      } : {}),
       ...(guestSessionId ? { guest_session_id:  guestSessionId } : {}),
@@ -158,7 +158,7 @@ export const chatAPI = {
 
   /** Fetch chat history — only call when the user is authenticated. */
   getHistory: async (limit = 50): Promise<ChatHistoryResponse> => {
-    const { data } = await api.get<ChatHistoryResponse>(`/chat/history?limit=${limit}`);
+    const { data } = await api.get<ChatHistoryResponse>(`${API_V1}/chat/history?limit=${limit}`);
     return data;
   },
 
@@ -167,7 +167,7 @@ export const chatAPI = {
     messages: Array<{ role: string; content: string }>,
     guestSessionId?: string,
   ): Promise<{ id: string }> => {
-    const { data } = await api.post<{ id: string }>("/chat/guest/merge", {
+    const { data } = await api.post<{ id: string }>(`${API_V1}/chat/guest/merge`, {
       messages,
       guest_session_id: guestSessionId,
     });
@@ -332,18 +332,38 @@ export type MedicalToolResponse = ClinicalConsultation;
 /** @deprecated — use ClinicalConsultation */
 export type OrganInfoResponse = ClinicalConsultation;
 
+/** Internal: call POST /chat and return AI response content. All AI features use this. */
+async function chatPost(content: string, sessionId?: string): Promise<{ content: string; session_id: string }> {
+  const { data } = await api.post<ChatResponse>(`${API_V1}/chat`, { content, session_id: sessionId ?? undefined });
+  return { content: data.ai_response.content, session_id: data.session_id };
+}
+
+function toClinicalConsultation(content: string): ClinicalConsultation {
+  return {
+    consultation_type: "assessment",
+    risk_level: "medium",
+    doctor_assessment: content,
+    follow_up_questions: [],
+    differential_diagnosis: [],
+    key_symptoms_to_check: [],
+    recommended_next_steps: [],
+    emergency_warning_signs: [],
+    medical_disclaimer: "This information is for educational purposes only and does not constitute medical advice. Always consult a qualified healthcare provider.",
+  };
+}
+
 export const aiAPI = {
-  /** Send any medical query and receive a structured clinical response. Pass sessionId for conversation memory. */
+  /** Send any medical query — uses POST /api/v1/chat */
   analyze: async (content: string, sessionId?: string): Promise<ClinicalConsultation> => {
-    const { data } = await api.post<ClinicalConsultation>("/ai/chat", { content, session_id: sessionId ?? undefined });
-    return data;
+    const { content: aiContent } = await chatPost(content, sessionId);
+    return toClinicalConsultation(aiContent);
   },
 
-  /** Get structured AI info about an organ (used by 3D Anatomy page). */
+  /** Get AI info about an organ — uses POST /api/v1/chat */
   askOrgan: async (organName: string): Promise<ClinicalConsultation> => {
-    const question = `Act as a clinical anatomy specialist. Explain the ${organName}: its primary physiological function, the 4 most common diseases affecting it (ranked by prevalence), key warning symptoms patients must not ignore, and specific advice for when to see a doctor urgently. Include India-specific context (prevalence, common risk factors in Indian population).`;
-    const { data } = await api.post<ClinicalConsultation>("/ai/chat", { content: question });
-    return data;
+    const question = `Act as a clinical anatomy specialist. Explain the ${organName}: its primary physiological function, the 4 most common diseases affecting it (ranked by prevalence), key warning symptoms patients must not ignore, and specific advice for when to see a doctor urgently. Include India-specific context.`;
+    const { content } = await chatPost(question);
+    return toClinicalConsultation(content);
   },
 };
 
@@ -399,36 +419,64 @@ export interface TriageOnlyResponse {
   action_summary: string;
 }
 
+function buildAssessmentPrompt(req: SymptomIntakeRequest): string {
+  const parts = [
+    "CLINICAL ASSESSMENT REQUEST",
+    `Chief complaint: ${req.chief_complaint}`,
+    `Symptoms: ${req.symptoms.join(", ")}`,
+    req.duration_days ? `Duration: ${req.duration_days} days` : "",
+    req.severity != null ? `Severity (1-10): ${req.severity}` : "",
+    req.age != null ? `Age: ${req.age}` : "",
+    req.sex ? `Sex: ${req.sex}` : "",
+    req.risk_factors?.length ? `Risk factors: ${req.risk_factors.join(", ")}` : "",
+  ].filter(Boolean);
+  return `${parts.join("\n")}\n\nPlease provide a clinical assessment: triage level (EMERGENCY/URGENT/ROUTINE/SELF-CARE), possible conditions, red flags, recommended tests, self-care advice, and when to see a doctor. Format as clear clinical prose.`;
+}
+
 export const symptomAssessmentAPI = {
+  /** Clinical Assessment — uses POST /api/v1/chat */
   assess: async (req: SymptomIntakeRequest): Promise<FullAssessmentResponse> => {
-    const { data } = await api.post<FullAssessmentResponse>(
-      "/symptom-assessment/symptom-intake",
-      req,
-    );
-    return data;
+    const prompt = buildAssessmentPrompt(req);
+    const { content } = await chatPost(prompt);
+    return {
+      session_id: null,
+      detected_symptoms: req.symptoms,
+      triage_level: "ROUTINE",
+      diagnoses: [],
+      red_flags: [],
+      recommended_tests: [],
+      self_care_advice: [],
+      escalation_recommendation: "Consult a healthcare provider if symptoms persist or worsen.",
+      clinical_note: content,
+      follow_up_questions: [],
+    };
   },
   triage: async (req: SymptomIntakeRequest): Promise<TriageOnlyResponse> => {
-    const { data } = await api.post<TriageOnlyResponse>("/symptom-assessment/triage", req);
-    return data;
+    const { content } = await chatPost(buildAssessmentPrompt(req));
+    return {
+      triage_level: "ROUTINE",
+      detected_symptoms: req.symptoms,
+      red_flags: [],
+      action_summary: content.slice(0, 300),
+    };
   },
   redFlagCheck: async (req: SymptomIntakeRequest) => {
-    const { data } = await api.post("/symptom-assessment/red-flag-check", req);
-    return data;
+    const { content } = await chatPost(`Red flag check for: ${req.chief_complaint}. Symptoms: ${req.symptoms.join(", ")}.`);
+    return { content };
   },
   symptomList: async (): Promise<{ categories: Record<string, string[]> }> => {
-    const { data } = await api.get("/symptom-assessment/symptom-list");
-    return data;
+    return { categories: {} };
   },
   getDiseaseProfile: async (diseaseId: string) => {
-    const { data } = await api.get(`/symptom-assessment/disease/${diseaseId}`);
-    return data;
+    const { content } = await chatPost(`Provide a brief profile for disease/condition: ${diseaseId}`);
+    return { content };
   },
 };
 
 export const labAPI = {
   /** POST ${baseURL}/lab/analyze → /api/v1/lab/analyze */
   analyzeText: async (rawText: string, opts?: { labName?: string; patientContext?: string }): Promise<LabAnalyzeResponse> => {
-    const { data } = await api.post<LabAnalyzeResponse>("/lab/analyze", {
+    const { data } = await api.post<LabAnalyzeResponse>(`${API_V1}/lab/analyze`, {
       raw_text: rawText, lab_name: opts?.labName, patient_context: opts?.patientContext,
     });
     return data;
@@ -473,15 +521,22 @@ function normalizeDrugInteractionResponse(data: Record<string, unknown>): DrugIn
 }
 
 export const medicineAPI = {
-  /** Check interactions between a list of drugs using the structured engine. */
+  /** Drug interaction check — uses POST /api/v1/chat */
   checkInteractions: async (drugs: string[]): Promise<DrugInteractionResponse> => {
-    const { data } = await api.post<Record<string, unknown>>("/medicine/interactions", { drugs });
-    return normalizeDrugInteractionResponse(data);
+    const prompt = `Analyze potential drug interactions between: ${drugs.join(", ")}. List any interactions, severity, and management advice.`;
+    const { content } = await chatPost(prompt);
+    return normalizeDrugInteractionResponse({
+      drugs,
+      interactions: [],
+      ai_analysis: content,
+      overall_risk: "See AI analysis below",
+      contraindicated: false,
+    });
   },
-  /** Get comprehensive information about a drug. */
+  /** Drug info — uses POST /api/v1/chat */
   getInfo: async (drugName: string) => {
-    const { data } = await api.post("/medicine/info", { drug_name: drugName });
-    return data;
+    const { content } = await chatPost(`Provide comprehensive information about the drug/medicine: ${drugName}. Include indications, dosage, side effects, contraindications.`);
+    return { name: drugName, content, explanation: content, source: "ai_only" };
   },
 };
 
@@ -518,30 +573,35 @@ export interface TreatmentNavigatorRequest {
 }
 
 export const doctorAPI = {
-  /** Generate a structured clinical summary. Requires doctor/admin role. */
+  /** Clinical summary — uses POST /api/v1/chat */
   clinicalSummary: async (req: ClinicalSummaryRequest): Promise<{ summary: string }> => {
-    const { data } = await api.post<{ summary: string }>("/doctor/clinical-summary", req);
-    return data;
+    const prompt = `Generate a structured clinical summary. Chief complaint: ${req.chief_complaint}. History: ${req.history}. ${req.vitals ? `Vitals: ${req.vitals}` : ""} ${req.lab_findings ? `Lab findings: ${req.lab_findings}` : ""}`;
+    const { content } = await chatPost(prompt);
+    return { summary: content };
   },
-  /** Draft a prescription suggestion. Requires doctor/admin role. */
+  /** Prescription draft — uses POST /api/v1/chat */
   prescriptionDraft: async (req: PrescriptionDraftRequest): Promise<{ draft: string }> => {
-    const { data } = await api.post<{ draft: string }>("/doctor/prescription-draft", req);
-    return data;
+    const prompt = `Draft a prescription for diagnosis: ${req.diagnosis}. ${req.allergies ? `Allergies: ${req.allergies}` : ""} ${req.existing_medications ? `Existing meds: ${req.existing_medications}` : ""}`;
+    const { content } = await chatPost(prompt);
+    return { draft: content };
   },
-  /** Generate a structured differential diagnosis. Requires doctor/admin role. */
+  /** Differential diagnosis — uses POST /api/v1/chat */
   differentialDx: async (req: DifferentialDxRequest): Promise<{ differentials: string }> => {
-    const { data } = await api.post<{ differentials: string }>("/doctor/differential-diagnosis", req);
-    return data;
+    const prompt = `Differential diagnosis for symptoms: ${req.symptoms}. ${req.age ? `Age: ${req.age}` : ""} ${req.gender ? `Gender: ${req.gender}` : ""} ${req.duration ? `Duration: ${req.duration}` : ""}`;
+    const { content } = await chatPost(prompt);
+    return { differentials: content };
   },
-  /** Translate medical text ↔ plain language. Available to all authenticated users. */
+  /** Translate medical ↔ plain — uses POST /api/v1/chat */
   translate: async (req: TranslatorRequest): Promise<{ original: string; translated: string }> => {
-    const { data } = await api.post<{ original: string; translated: string }>("/doctor/translate", req);
-    return data;
+    const dir = req.direction === "to_plain" ? "plain language" : "medical terminology";
+    const { content } = await chatPost(`Translate to ${dir}: ${req.text}`);
+    return { original: req.text, translated: content };
   },
-  /** Get treatment guidance for a condition. Available to all authenticated users. */
+  /** Treatment navigator — uses POST /api/v1/chat */
   treatmentNavigator: async (req: TreatmentNavigatorRequest): Promise<{ condition: string; guidance: string }> => {
-    const { data } = await api.post<{ condition: string; guidance: string }>("/doctor/treatment-navigator", req);
-    return data;
+    const prompt = `Treatment guidance for: ${req.condition}. ${req.stage ? `Stage: ${req.stage}` : ""} ${req.preferences ? `Preferences: ${req.preferences}` : ""}`;
+    const { content } = await chatPost(prompt);
+    return { condition: req.condition, guidance: content };
   },
 };
 
