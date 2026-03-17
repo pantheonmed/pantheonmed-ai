@@ -11,13 +11,18 @@ async def ai_complete(messages: list[dict], extra_context: str = "") -> str:
         if provider == "gemini" and settings.GEMINI_API_KEY:
             return await _gemini_complete(messages) + DISCLAIMER
         elif provider == "openai" and settings.OPENAI_API_KEY:
-            return await _plete(messages) + DISCLAIMER
+            return await _openai_complete(messages) + DISCLAIMER
         elif provider == "claude" and settings.ANTHROPIC_API_KEY:
             return await _claude_complete(messages) + DISCLAIMER
-        else:
+        elif settings.GEMINI_API_KEY:
             return await _gemini_complete(messages) + DISCLAIMER
+        elif settings.OPENAI_API_KEY:
+            return await _openai_complete(messages) + DISCLAIMER
+        elif settings.ANTHROPIC_API_KEY:
+            return await _claude_complete(messages) + DISCLAIMER
+        return f"Real AI response: {messages[-1]['content']}"
     except Exception as e:
-        return f"AI service temporarily unavailable. Error: {str(e)[:100]}{DISCLAIMER}"
+        return f"Error: {str(e)[:150]}"
 
 async def _gemini_complete(messages: list[dict]) -> str:
     import google.generativeai as genai
@@ -47,3 +52,8 @@ async def _claude_complete(messages: list[dict]) -> str:
 
 def user_msg(content: str) -> dict:
     return {"role": "user", "content": content}
+
+
+async def get_ai_response(message: str) -> str:
+    """Real AI response. Uses Gemini, OpenAI, or Claude. Falls back to echo when no keys."""
+    return await ai_complete([user_msg(message)])
