@@ -1,20 +1,34 @@
 /**
  * PantheonMed AI — API Service Layer
+ * All requests go to ${NEXT_PUBLIC_API_URL}/api/v1/*
  */
 import axios, { AxiosInstance } from "axios";
 
-const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/$/, "");
+const API_ORIGIN = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/$/, "");
+const API_BASE_URL = `${API_ORIGIN}/api/v1`;
+
+/** baseURL for all API calls — do NOT include /api/v1 in NEXT_PUBLIC_API_URL */
+export function getApiBaseUrl(): string {
+  return API_BASE_URL;
+}
+
+/** Origin only (for /health etc) — do NOT include /api/v1 in env */
+export function getApiOrigin(): string {
+  return API_ORIGIN.endsWith("/api/v1") ? API_ORIGIN.replace(/\/api\/v1$/, "") : API_ORIGIN;
+}
 
 const api: AxiosInstance = axios.create({
-  baseURL: `${API_BASE}/api/v1`,
+  baseURL: API_BASE_URL,
   timeout: 45_000,
   headers: { "Content-Type": "application/json" },
 });
 
-// Attach Bearer token from localStorage on every request
+// Only send Authorization header when user is logged in (guest mode = no token)
 api.interceptors.request.use((cfg) => {
-  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
-  if (token) cfg.headers.Authorization = `Bearer ${token}`;
+  if (typeof window !== "undefined") {
+    const token = localStorage.getItem("access_token");
+    if (token) cfg.headers.Authorization = `Bearer ${token}`;
+  }
   return cfg;
 });
 
@@ -412,6 +426,7 @@ export const symptomAssessmentAPI = {
 };
 
 export const labAPI = {
+  /** POST ${baseURL}/lab/analyze → /api/v1/lab/analyze */
   analyzeText: async (rawText: string, opts?: { labName?: string; patientContext?: string }): Promise<LabAnalyzeResponse> => {
     const { data } = await api.post<LabAnalyzeResponse>("/lab/analyze", {
       raw_text: rawText, lab_name: opts?.labName, patient_context: opts?.patientContext,
@@ -530,4 +545,5 @@ export const doctorAPI = {
   },
 };
 
+export const apiClient = api;
 export default api;

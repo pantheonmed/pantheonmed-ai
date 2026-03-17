@@ -25,7 +25,7 @@ import {
   Wifi,
   WifiOff,
 } from "lucide-react";
-import { aiAPI, getApiErrorMessage } from "@/services/api";
+import { aiAPI, getApiErrorMessage, getApiOrigin } from "@/services/api";
 import InputBar from "@/components/chat/InputBar";
 import ResponseCard from "@/components/chat/ResponseCard";
 import WellnessCard, { parseWellnessResponse } from "@/components/chat/WellnessCard";
@@ -344,11 +344,11 @@ export default function MedicalChatInterface() {
 
   // ── Backend health probe — checks on mount, retries every 30s if offline ──
   useEffect(() => {
-    const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").replace(/\/$/, "");
+    const origin = getApiOrigin();
 
     const probe = async () => {
       try {
-        const res = await fetch(`${API_BASE}/health`, { method: "GET", signal: AbortSignal.timeout(5000) });
+        const res = await fetch(`${origin}/health`, { method: "GET", signal: AbortSignal.timeout(5000) });
         setBackendStatus(res.ok ? "online" : "offline");
       } catch {
         setBackendStatus("offline");

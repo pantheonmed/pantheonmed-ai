@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from fastapi import HTTPException, status, Depends
@@ -10,6 +11,7 @@ from app.db.database import get_db
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer()
+security_optional = HTTPBearer(auto_error=False)
 
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
@@ -41,3 +43,21 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="User not found")
     return user
+
+
+async def get_current_user_optional(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_optional), db: AsyncSession = Depends(get_db)):
+    """Returns User if valid token, None if no token or invalid. Use for public endpoints."""
+    from app.models.user import User
+    if not credentials:
+        return None
+    try:
+        payload = jwt.decode(credentials.credentials, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+        if payload.get("type") != "access":
+            return None
+        result = await db.execute(select(User).where(User.id == payload["sub"]))
+        user = result.scalar_one_or_none()
+        if not user or not getattr(user, "is_active", True):
+            return None
+        return user
+    except JWTError:
+        return None

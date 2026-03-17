@@ -1,21 +1,28 @@
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.db.database import get_db
-from app.models.user import User
 from app.models.lab_report import LabReport
 from app.schemas.lab_schema import LabAnalyzeTextRequest, LabAnalyzeResponse
-from app.services.auth_service import get_current_user
+from app.models.user import User
+from app.services.auth_service import get_current_user, get_current_user_optional
 from app.services.lab_analyzer import analyze_lab_text
 
 router = APIRouter(prefix="/lab", tags=["Lab Reports"])
 
 @router.post("/analyze", response_model=LabAnalyzeResponse)
-async def analyze_lab(body: LabAnalyzeTextRequest, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def analyze_lab(
+    body: LabAnalyzeTextRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+):
+    """Public endpoint — works without authentication (guest mode)."""
     if not body.raw_text.strip():
         raise HTTPException(400, "Lab report text cannot be empty")
     result = await analyze_lab_text(raw_text=body.raw_text, patient_context=body.patient_context or "", lab_name=body.lab_name or "")
-    report = LabReport(user_id=current_user.id, raw_text=body.raw_text, ai_analysis=result["analysis"], lab_name=body.lab_name, report_date=body.report_date)
+    user_id = current_user.id if current_user else None
+    report = LabReport(user_id=user_id, raw_text=body.raw_text, ai_analysis=result["analysis"], lab_name=body.lab_name, report_date=body.report_date)
     db.add(report)
     await db.commit()
     await db.refresh(report)

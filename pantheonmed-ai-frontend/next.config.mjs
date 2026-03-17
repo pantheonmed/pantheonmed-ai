@@ -39,7 +39,7 @@ const nextConfig = {
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "font-src 'self' https://fonts.gstatic.com",
               "img-src 'self' data: blob: https:",
-              "connect-src 'self' http://localhost:8000 https://api.pantheonmed.ai",
+              "connect-src 'self' http://localhost:8000 https://api.pantheonmed.ai https://*.up.railway.app https://pantheonmed-ai-production.up.railway.app",
               "media-src 'self'",
               "object-src 'none'",
               "base-uri 'self'",

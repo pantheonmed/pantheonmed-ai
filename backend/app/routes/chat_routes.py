@@ -1,25 +1,36 @@
+from typing import TYPE_CHECKING
 from fastapi import APIRouter, Depends, HTTPException
+
+if TYPE_CHECKING:
+    from app.models.user import User
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from app.db.database import get_db, AsyncSessionLocal
-from app.models.user import User
+from app.db.database import get_db
 from app.models.chat import ChatSession, ChatMessage
 from app.schemas.chat_schema import ChatMessageRequest, ChatMessageResponse, ChatResponse
-from app.services.auth_service import get_current_user
+from app.services.auth_service import get_current_user_optional
 from app.services.ai_service import ai_complete
 
 router = APIRouter(prefix="/chat", tags=["AI Chat"])
 
 @router.post("", response_model=ChatResponse)
-async def chat(body: ChatMessageRequest, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def chat(
+    body: ChatMessageRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: "User | None" = Depends(get_current_user_optional),
+):
+    user_id = current_user.id if current_user else None
+
     if body.session_id:
-        result = await db.execute(select(ChatSession).where(ChatSession.id == body.session_id, ChatSession.user_id == current_user.id))
+        result = await db.execute(select(ChatSession).where(ChatSession.id == body.session_id))
         session = result.scalar_one_or_none()
         if not session:
             raise HTTPException(404, "Session not found")
+        if session.user_id and session.user_id != user_id:
+            raise HTTPException(403, "Session not found")
     else:
         title = body.content[:50] + "..." if len(body.content) > 50 else body.content
-        session = ChatSession(user_id=current_user.id, title=title)
+        session = ChatSession(user_id=user_id, title=title)
         db.add(session)
         await db.flush()
 

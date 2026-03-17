@@ -96,3 +96,4 @@ Thumbs.db
 # ── Alembic ───────────────────────────────────────────────────────────────────
 # Keep migration files, ignore auto-generated temp files
 backend/alembic/versions/__pycache__/
+
