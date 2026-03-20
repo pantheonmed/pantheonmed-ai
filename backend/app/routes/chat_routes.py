@@ -16,7 +16,7 @@ async def chat(body: ChatRequest):
             "id": str(uuid.uuid4()),
             "session_id": session_id,
             "role": "assistant",
-            "content": f"Dynamic AI response: {body.content}",
+            "content": get_ai_response(body.content),
             "has_disclaimer": True,
             "created_at": "",
         }
