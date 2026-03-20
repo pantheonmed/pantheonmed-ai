@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
-import { chatAPI, ChatMessage } from "@/services/api";
+import { analyzeSymptoms } from "@/api/client";
+import { ChatMessage } from "@/services/api";
 import MessageBubble, { TypingIndicator } from "@/components/MessageBubble";
 import { Stethoscope, X, AlertCircle, Thermometer, Search, ChevronRight } from "lucide-react";
 import clsx from "clsx";
@@ -59,16 +60,37 @@ export default function SymptomsPage() {
 
   const analyze = async () => {
     if (selected.length === 0) return;
-    const question = `I have the following symptoms for ${duration}: ${selected.join(", ")}. Severity: ${severity}. What could be the possible causes? Please explain each in simple language and advise what I should do next.`;
     setLoading(true);
     setError("");
     setStep("result");
     try {
-      const res = await chatAPI.send(question);
-      setMessages([res.message, res.ai_response]);
-    } catch (e: unknown) {
-      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(msg ?? "Could not analyze symptoms. Check your API token.");
+      const result = await analyzeSymptoms({
+        symptoms: selected,
+        context: `Duration: ${duration}. Severity: ${severity}. What could be the possible causes? Please explain each in simple language and advise what I should do next.`,
+      });
+      const data = result?.data;
+      if (data?.ai_response) {
+        const userMsg: ChatMessage = {
+          id: data.session_id,
+          session_id: data.session_id,
+          role: "user",
+          content: `Symptoms: ${selected.join(", ")}`,
+          has_disclaimer: false,
+          created_at: new Date().toISOString(),
+        };
+        const aiMsg: ChatMessage = {
+          ...data.ai_response,
+          id: data.ai_response.id || crypto.randomUUID(),
+          session_id: data.session_id,
+          role: "assistant",
+          content: data.ai_response.content,
+          has_disclaimer: data.ai_response.has_disclaimer ?? true,
+          created_at: data.ai_response.created_at || new Date().toISOString(),
+        };
+        setMessages([userMsg, aiMsg]);
+      }
+    } catch {
+      setError("Server not connected. Please try again.");
       setStep("select");
     } finally {
       setLoading(false);

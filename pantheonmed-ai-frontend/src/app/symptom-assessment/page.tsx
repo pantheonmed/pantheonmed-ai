@@ -62,12 +62,8 @@ export default function SymptomAssessmentPage() {
     try {
       const data = await symptomAssessmentAPI.assess(req);
       setResult(data);
-    } catch (err: unknown) {
-      const msg =
-        err instanceof Error
-          ? err.message
-          : "Assessment failed. Please check your backend connection and try again.";
-      setError(msg);
+    } catch {
+      setError("Server not connected. Please try again.");
     } finally {
       setIsLoading(false);
     }

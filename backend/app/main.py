@@ -47,3 +47,26 @@ async def health():
 @app.get("/")
 async def root():
     return {"message": "PantheonMed AI Backend Running", "docs": "/docs"}
+
+
+@app.post("/analyze")
+async def analyze(data: dict):
+    """Symptom analysis endpoint — used by frontend analyze button."""
+    from app.routes.chat_routes import chat
+    from app.routes.chat_routes import ChatRequest
+
+    symptoms = data.get("symptoms", [])
+    if isinstance(symptoms, str):
+        symptoms = [symptoms] if symptoms else []
+    context = data.get("context", "")
+    content = f"SYMPTOM CHECKER — Clinical Triage Assessment\n\nPatient's symptoms: {', '.join(symptoms)}"
+    if context:
+        content += f"\n\nAdditional context:\n{context}"
+    content += "\n\nPlease perform a clinical triage assessment. Identify the most likely conditions, triage severity (emergency/urgent/semi-urgent/non-urgent), recommended next steps, and red-flag warning signs that require immediate emergency care."
+    body = ChatRequest(content=content)
+    result = await chat(body)
+    return {
+        "status": "success",
+        "message": "API working",
+        "data": result,
+    }

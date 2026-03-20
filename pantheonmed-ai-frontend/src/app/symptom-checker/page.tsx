@@ -1,7 +1,8 @@
 "use client";
 import { useState } from "react";
 import { Stethoscope, Send, Plus, X, RotateCcw, ChevronRight } from "lucide-react";
-import { aiAPI, MedicalToolResponse } from "@/services/api";
+import { analyzeSymptoms } from "@/api/client";
+import { MedicalToolResponse } from "@/services/api";
 import MedicalToolResult, { ToolLoadingState } from "@/components/MedicalToolResult";
 import clsx from "clsx";
 
@@ -49,29 +50,35 @@ export default function SymptomCheckerPage() {
 
   async function analyze() {
     if (symptoms.length === 0) return;
-    setLoading(true); setError("");
+    setLoading(true);
+    setError("");
     try {
       const fuText = Object.entries(followUps)
         .filter(([, v]) => v.trim())
         .map(([q, a]) => `${q}: ${a}`)
         .join("\n");
 
-      const prompt = [
-        `SYMPTOM CHECKER — Clinical Triage Assessment`,
-        ``,
-        `Patient's symptoms: ${symptoms.join(", ")}`,
-        fuText ? `\nAdditional context:\n${fuText}` : "",
-        ``,
-        `Please perform a clinical triage assessment. Identify the most likely conditions,`,
-        `triage severity (emergency/urgent/semi-urgent/non-urgent), recommended next steps,`,
-        `and red-flag warning signs that require immediate emergency care.`,
-      ].join("\n");
+      const result = await analyzeSymptoms({
+        symptoms,
+        context: fuText || undefined,
+      });
 
-      const res = await aiAPI.analyze(prompt);
+      const content = result?.data?.ai_response?.content ?? "";
+      const res: MedicalToolResponse = {
+        consultation_type: "assessment",
+        risk_level: "medium",
+        doctor_assessment: content,
+        follow_up_questions: [],
+        differential_diagnosis: [],
+        key_symptoms_to_check: [],
+        recommended_next_steps: [],
+        emergency_warning_signs: [],
+        medical_disclaimer: "This information is for educational purposes only and does not constitute medical advice. Always consult a qualified healthcare provider.",
+      };
       setResult(res);
       setStep("result");
     } catch {
-      setError("Unable to analyze symptoms. Please try again.");
+      setError("Server not connected. Please try again.");
     } finally {
       setLoading(false);
     }

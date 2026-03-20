@@ -8,6 +8,12 @@ const nextConfig = {
   // Standalone output only for Docker/Railway (not for Vercel)
   output: process.env.DOCKER_BUILD ? "standalone" : undefined,
 
+  // Expose API URL to client (VITE_API_URL or NEXT_PUBLIC_API_URL)
+  env: {
+    VITE_API_URL: process.env.VITE_API_URL || process.env.NEXT_PUBLIC_API_URL,
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
+  },
+
   // Explicit webpack alias for @/* — ensures path resolution in production/Docker
   webpack: (config) => {
     config.resolve.alias["@"] = path.resolve(__dirname, "src");

@@ -1,25 +1,52 @@
 /**
  * PantheonMed AI — API Service Layer
- * All requests go to ${NEXT_PUBLIC_API_URL}/api/v1/*
+ * Backend: POST /api/v1/chat, POST /api/v1/lab/analyze, POST /api/v1/auth/*
  */
 import axios, { AxiosInstance } from "axios";
 
-/** baseURL = origin only. All paths must include /api/v1 prefix. */
-const API_ORIGIN = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/$/, "");
+/** Resolve API URL — Vite: import.meta.env.VITE_API_URL, Next.js: process.env */
+function resolveApiUrl(): string {
+  const vite = typeof import.meta !== "undefined" && (import.meta as { env?: { VITE_API_URL?: string } }).env?.VITE_API_URL;
+  const url = (vite || process.env.VITE_API_URL || process.env.NEXT_PUBLIC_API_URL || "https://pantheonmed-ai-production.up.railway.app").replace(/\/$/, "");
+  if (typeof window !== "undefined") {
+    console.log("[API] API URL:", url);
+  }
+  return url;
+}
+
+export const API_URL = resolveApiUrl();
 
 export function getApiBaseUrl(): string {
-  return `${API_ORIGIN}/api/v1`;
+  return `${API_URL}/api/v1`;
 }
 
 export function getApiOrigin(): string {
-  return API_ORIGIN.endsWith("/api/v1") ? API_ORIGIN.replace(/\/api\/v1$/, "") : API_ORIGIN;
+  return API_URL.endsWith("/api/v1") ? API_URL.replace(/\/api\/v1$/, "") : API_URL;
 }
 
 const api: AxiosInstance = axios.create({
-  baseURL: API_ORIGIN,
+  baseURL: API_URL,
   timeout: 45_000,
   headers: { "Content-Type": "application/json" },
 });
+
+// Log API responses in development
+api.interceptors.response.use(
+  (res) => {
+    if (typeof window !== "undefined" && process.env.NODE_ENV === "development") {
+      console.log(`[API] ${res.config.method?.toUpperCase()} ${res.config.url} → ${res.status}`);
+    }
+    return res;
+  },
+  (err) => {
+    if (typeof window !== "undefined") {
+      const url = err?.config?.url ?? "unknown";
+      const status = err?.response?.status;
+      console.error(`[API] Error ${url}`, status ?? err.message, err?.response?.data);
+    }
+    return Promise.reject(err);
+  }
+);
 
 // Only send Authorization header when user is logged in (guest mode = no token)
 api.interceptors.request.use((cfg) => {
@@ -143,35 +170,58 @@ export const authAPI = {
 };
 
 export const chatAPI = {
+  /** POST /api/v1/chat — main chat endpoint */
   send: async (
     content: string,
     sessionId?: string,
     guestSessionId?: string,
   ): Promise<ChatResponse> => {
-    const { data } = await api.post<ChatResponse>(`${API_V1}/chat`, {
-      content,
-      ...(sessionId      ? { session_id:       sessionId      } : {}),
-      ...(guestSessionId ? { guest_session_id:  guestSessionId } : {}),
-    });
-    return data;
+    try {
+      const { data } = await api.post<ChatResponse>(`${API_V1}/chat`, {
+        content,
+        ...(sessionId ? { session_id: sessionId } : {}),
+        ...(guestSessionId ? { guest_session_id: guestSessionId } : {}),
+      });
+      if (process.env.NODE_ENV === "development") console.log("[API] chat send response", data);
+      return data;
+    } catch (err) {
+      console.error("[API] chat send error", err);
+      throw err;
+    }
   },
 
-  /** Fetch chat history — only call when the user is authenticated. */
+  /** Chat history — backend may not have this endpoint; returns empty on 404 */
   getHistory: async (limit = 50): Promise<ChatHistoryResponse> => {
-    const { data } = await api.get<ChatHistoryResponse>(`${API_V1}/chat/history?limit=${limit}`);
-    return data;
+    try {
+      const { data } = await api.get<ChatHistoryResponse>(`${API_V1}/chat/history?limit=${limit}`);
+      return data;
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 404) {
+        return { session_id: null, messages: [], items: [], total: 0 };
+      }
+      throw err;
+    }
   },
 
-  /** Import an in-browser guest conversation into the user's account after login. */
+  /** Merge guest session — backend may not have this endpoint; returns mock id on 404 */
   mergeGuestSession: async (
     messages: Array<{ role: string; content: string }>,
     guestSessionId?: string,
   ): Promise<{ id: string }> => {
-    const { data } = await api.post<{ id: string }>(`${API_V1}/chat/guest/merge`, {
-      messages,
-      guest_session_id: guestSessionId,
-    });
-    return data;
+    try {
+      const { data } = await api.post<{ id: string }>(`${API_V1}/chat/guest/merge`, {
+        messages,
+        guest_session_id: guestSessionId,
+      });
+      return data;
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 404) {
+        return { id: crypto.randomUUID() };
+      }
+      throw err;
+    }
   },
 };
 
@@ -332,10 +382,15 @@ export type MedicalToolResponse = ClinicalConsultation;
 /** @deprecated — use ClinicalConsultation */
 export type OrganInfoResponse = ClinicalConsultation;
 
-/** Internal: call POST /chat and return AI response content. All AI features use this. */
+/** Internal: call POST /api/v1/chat and return AI response content. All AI features use this. */
 async function chatPost(content: string, sessionId?: string): Promise<{ content: string; session_id: string }> {
-  const { data } = await api.post<ChatResponse>(`${API_V1}/chat`, { content, session_id: sessionId ?? undefined });
-  return { content: data.ai_response.content, session_id: data.session_id };
+  try {
+    const { data } = await api.post<ChatResponse>(`${API_V1}/chat`, { content, session_id: sessionId ?? undefined });
+    return { content: data.ai_response.content, session_id: data.session_id };
+  } catch (err) {
+    console.error("[API] chatPost error", err);
+    throw err;
+  }
 }
 
 function toClinicalConsultation(content: string): ClinicalConsultation {
@@ -474,12 +529,20 @@ export const symptomAssessmentAPI = {
 };
 
 export const labAPI = {
-  /** POST ${baseURL}/lab/analyze → /api/v1/lab/analyze */
+  /** POST /api/v1/lab/analyze */
   analyzeText: async (rawText: string, opts?: { labName?: string; patientContext?: string }): Promise<LabAnalyzeResponse> => {
-    const { data } = await api.post<LabAnalyzeResponse>(`${API_V1}/lab/analyze`, {
-      raw_text: rawText, lab_name: opts?.labName, patient_context: opts?.patientContext,
-    });
-    return data;
+    try {
+      const { data } = await api.post<LabAnalyzeResponse>(`${API_V1}/lab/analyze`, {
+        raw_text: rawText,
+        lab_name: opts?.labName,
+        patient_context: opts?.patientContext,
+      });
+      if (process.env.NODE_ENV === "development") console.log("[API] lab analyze response", data);
+      return data;
+    } catch (err) {
+      console.error("[API] lab analyze error", err);
+      throw err;
+    }
   },
 };
 

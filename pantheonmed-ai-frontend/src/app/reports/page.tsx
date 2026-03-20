@@ -108,9 +108,8 @@ export default function ReportsPage() {
     try {
       const res = await labAPI.analyzeText(text.trim(), { patientContext: context || undefined });
       setResult(res);
-    } catch (e: unknown) {
-      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(msg ?? "Analysis failed. Check your API token.");
+    } catch {
+      setError("Server not connected. Please try again.");
     } finally {
       setLoading(false);
     }

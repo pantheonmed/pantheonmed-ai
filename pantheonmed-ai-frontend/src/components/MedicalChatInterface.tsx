@@ -344,14 +344,21 @@ export default function MedicalChatInterface() {
 
   // ── Backend health probe — checks on mount, retries every 30s if offline ──
   useEffect(() => {
-    const origin = getApiOrigin();
+    const apiUrl = getApiOrigin();
+    const healthUrl = `${apiUrl}/health`;
 
     const probe = async () => {
       try {
-        const res = await fetch(`${origin}/health`, { method: "GET", signal: AbortSignal.timeout(5000) });
-        setBackendStatus(res.ok ? "online" : "offline");
-      } catch {
+        const res = await fetch(healthUrl, { method: "GET", signal: AbortSignal.timeout(5000) });
+        const ok = res.ok;
+        setBackendStatus(ok ? "online" : "offline");
+        if (process.env.NODE_ENV === "development") {
+          console.log(`[API] Health check ${healthUrl} → ${res.status} (${ok ? "online" : "offline"})`);
+        }
+        if (!ok) console.warn(`[API] Backend returned ${res.status} from ${healthUrl}`);
+      } catch (err) {
         setBackendStatus("offline");
+        console.error("[API] Health check failed", healthUrl, err);
       }
     };
 
@@ -725,7 +732,7 @@ export default function MedicalChatInterface() {
           <WifiOff className="h-4 w-4 text-red-500 shrink-0" />
           <p className="text-xs font-medium text-red-700 flex-1">
             Cannot reach the AI server at{" "}
-            <span className="font-mono">{process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}</span>.
+            <span className="font-mono">{getApiOrigin()}</span>.
             {" "}Start the backend with <span className="font-mono">./start.sh</span> and refresh.
           </p>
         </div>
