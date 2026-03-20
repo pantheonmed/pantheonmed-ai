@@ -37,6 +37,11 @@ class Settings(BaseSettings):
 
 @lru_cache()
 def get_settings():
-    return Settings()
+    s = Settings()
+    # Debug: verify GEMINI_API_KEY loads (never log the actual key)
+    loaded = bool(s.GEMINI_API_KEY and s.GEMINI_API_KEY.strip())
+    print(f"[Config] GEMINI_API_KEY loaded: {'yes' if loaded else 'no'}")
+    return s
+
 
 settings = get_settings()
