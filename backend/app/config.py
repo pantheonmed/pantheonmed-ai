@@ -2,6 +2,7 @@ from pydantic_settings import BaseSettings
 from functools import lru_cache
 from typing import List
 
+
 class Settings(BaseSettings):
     APP_NAME: str = "PantheonMed AI"
     APP_VERSION: str = "1.0.0"
@@ -14,7 +15,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://user:pass@localhost:5432/db"
     REDIS_URL: str = "redis://localhost:6379/0"
     AI_PROVIDER: str = "gemini"
-    GEMINI_API_KEY: str = ""
+    GEMINI_API_KEY: str = ""  # From env: GEMINI_API_KEY — never hardcode
     GEMINI_MODEL: str = "gemini-1.5-flash"
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-4o-mini"
@@ -32,6 +33,7 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
+
 
 @lru_cache()
 def get_settings():

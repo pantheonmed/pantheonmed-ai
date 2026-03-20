@@ -1,3 +1,4 @@
+import os
 from app.config import settings
 
 DISCLAIMER = "\n\n---\n⚠️ Medical Disclaimer: AI guidance only — not a substitute for professional medical advice. Emergency: call 112.\n---"
@@ -5,29 +6,43 @@ DISCLAIMER = "\n\n---\n⚠️ Medical Disclaimer: AI guidance only — not a sub
 SYSTEM_PROMPT = """You are PantheonMed AI — India healthcare assistant.
 Rules: 1) Informational only, never diagnose 2) Emergency symptoms → say Call 112 NOW 3) Use simple Hindi/English 4) Always recommend consulting a doctor"""
 
+
+def _get_gemini_api_key() -> str:
+    """Resolve GEMINI_API_KEY from env. Never hardcode. Raises if missing when Gemini is used."""
+    key = settings.GEMINI_API_KEY or os.getenv("GEMINI_API_KEY", "")
+    if not key or not key.strip():
+        raise ValueError("GEMINI_API_KEY not found. Set it in .env or Railway environment variables.")
+    return key.strip()
+
+
 async def ai_complete(messages: list[dict], extra_context: str = "") -> str:
     provider = settings.AI_PROVIDER.lower()
     try:
-        if provider == "gemini" and settings.GEMINI_API_KEY:
+        if provider == "gemini":
             return await _gemini_complete(messages) + DISCLAIMER
         elif provider == "openai" and settings.OPENAI_API_KEY:
             return await _openai_complete(messages) + DISCLAIMER
         elif provider == "claude" and settings.ANTHROPIC_API_KEY:
             return await _claude_complete(messages) + DISCLAIMER
-        elif settings.GEMINI_API_KEY:
+        elif settings.GEMINI_API_KEY or os.getenv("GEMINI_API_KEY"):
             return await _gemini_complete(messages) + DISCLAIMER
         elif settings.OPENAI_API_KEY:
             return await _openai_complete(messages) + DISCLAIMER
         elif settings.ANTHROPIC_API_KEY:
             return await _claude_complete(messages) + DISCLAIMER
         return f"Real AI response: {messages[-1]['content']}"
+    except ValueError as e:
+        return f"Configuration error: {str(e)}"
     except Exception as e:
         return f"Error: {str(e)[:150]}"
 
+
 async def _gemini_complete(messages: list[dict]) -> str:
-    import google.generativeai as genai
     import asyncio
-    genai.configure(api_key=settings.GEMINI_API_KEY)
+    import google.generativeai as genai
+
+    api_key = _get_gemini_api_key()
+    genai.configure(api_key=api_key)
     model = genai.GenerativeModel(settings.GEMINI_MODEL, system_instruction=SYSTEM_PROMPT)
     history = [{"role": "user" if m["role"] == "user" else "model", "parts": [m["content"]]} for m in messages[:-1]]
     chat = model.start_chat(history=history)
@@ -57,3 +72,9 @@ def user_msg(content: str) -> dict:
 async def get_ai_response(message: str) -> str:
     """Real AI response. Uses Gemini, OpenAI, or Claude. Falls back to echo when no keys."""
     return await ai_complete([user_msg(message)])
+
+
+def generate_response(prompt: str) -> str:
+    """Synchronous wrapper for simple prompts. Prefer get_ai_response for async."""
+    import asyncio
+    return asyncio.run(get_ai_response(prompt))
